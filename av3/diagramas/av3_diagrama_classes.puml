@@ -1,0 +1,161 @@
+@startuml av3_diagrama_classes
+title GreenCode - Arquitetura da Plataforma Analítica, API Pública e Filas Assíncronas (AV3)
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "Camada de Apresentação e Segurança (Fastify HTTP & Middlewares)" {
+  class Server {
+    + buildServer(): FastifyInstance
+    + start(): Promise<void>
+  }
+
+  class AuthMiddleware {
+    + authenticate(req: FastifyRequest, rep: FastifyReply): Promise<void>
+    + authorize(papeis: PapelUsuario[]): Function
+  }
+
+  class ApiKeyAuthMiddleware {
+    + authenticateApiKey(req: FastifyRequest, rep: FastifyReply): Promise<void>
+    + requireApiKeyPermission(permissao: PermissaoApiKey): Function
+  }
+
+  class RateLimitPlugin <<@fastify/rate-limit>> {
+    + max: Function
+    + timeWindow: string
+    + keyGenerator(req: FastifyRequest): string
+  }
+
+  class SwaggerPlugin <<@fastify/swagger>> {
+    + openapi: OpenAPISpec
+    + routePrefix: "/docs"
+  }
+}
+
+package "Camada de Controladores Segregados (/api/v1/internal, /admin, /public)" {
+  class AuthController {
+    + login(req, rep)
+    + gerarApiKey(req, rep)
+    + listarApiKeys(req, rep)
+    + revogarApiKey(req, rep)
+  }
+
+  class AnalyticsController {
+    + eficienciaOperacional(req, rep)
+    + rentabilidade(req, rep)
+    + preditivoVidaUtil(req, rep)
+    + historicoAnalitico(req, rep)
+    + executarCronManual(req, rep)
+  }
+
+  class PublicApiController {
+    + consultarRastreabilidade(req, rep)
+    + submeterLoteParceiro(req, rep)
+    + resumoAnaliticoParceiro(req, rep)
+    + solicitarRelatorioAssincrono(req, rep)
+    + consultarStatusTarefa(req, rep)
+    + downloadRelatorioTarefa(req, rep)
+  }
+
+  class LoteController
+  class EquipamentoController
+  class OrganizacaoController
+  class RelatorioController
+}
+
+package "Camada de Serviços Analíticos, Negócio e Orquestração Assíncrona" {
+  class AnalyticsService {
+    + analisarEficienciaOperacional(periodo, solicitante, orgId)
+    + analisarRentabilidadePorEquipamento(tipo, solicitante, orgId)
+    + analisarVidaUtilPreditiva(tipo, alfa, solicitante, orgId)
+    + calcularMinimosQuadradosOrdinarios(paresXY): OLSResult
+    + calcularSuavizacaoExponencial(serie, alfa): number
+    + consultarHistoricoAnalitico(limite)
+  }
+
+  class FilaRelatorioService {
+    - bullQueue: Queue
+    - bullWorker: Worker
+    - modoExecucao: string
+    + enfileirarRelatorio(dados): Promise<JobInfo>
+    - executarComRetryExponencial(payload, maxTentativas): Promise<void>
+    - processarJob(payload, tentativa): Promise<void>
+    - converterParaCSV(tipo, dados): string
+    + consultarStatusTarefa(tarefaId)
+    + obterDownloadTarefa(tarefaId)
+  }
+
+  class CronSchedulerService {
+    - task: ScheduledTask
+    + iniciarAgendamento(expressaoCron)
+    + executarCicloAnalitico(origem)
+    + obterStatus()
+  }
+
+  class AuthService {
+    + authenticate(usuario, senha)
+    + gerarApiKeyParceiro(dados)
+    + validarApiKey(rawKey)
+    + revogarApiKey(id, operador)
+  }
+
+  class EquipamentoService {
+    + calcularDepreciacao(ano, estado): number
+    + estimarValorRecuperacaoBRL(tipo, marca, estado, peso, ano): number
+    + rastrear(idOuCodigo)
+  }
+
+  class LoteService
+  class OrganizacaoService
+}
+
+package "Camada de Repositórios (Prisma ORM)" {
+  class AnalyticsRepository {
+    + saveRelatorioEficiencia(data)
+    + saveRelatorioRentabilidade(data)
+    + saveRelatorioPreditivo(data)
+    + listRelatoriosPreditivos(tipo, limite)
+  }
+
+  class ApiKeyRepository {
+    + create(data)
+    + findByHash(hashChave)
+    + incrementUsage(id)
+    + revoke(id)
+  }
+
+  class TarefaRelatorioRepository {
+    + create(data)
+    + findById(id)
+    + updateStatus(id, data)
+    + listRecent(limite)
+  }
+
+  class LoteRepository
+  class EquipamentoRepository
+  class OrganizacaoRepository
+  class JournalRepository
+}
+
+Server --> AuthMiddleware
+Server --> ApiKeyAuthMiddleware
+Server --> RateLimitPlugin
+Server --> SwaggerPlugin
+Server --> AuthController
+Server --> AnalyticsController
+Server --> PublicApiController
+
+AuthController --> AuthService
+AnalyticsController --> AnalyticsService
+AnalyticsController --> CronSchedulerService
+PublicApiController --> EquipamentoService
+PublicApiController --> LoteService
+PublicApiController --> AnalyticsService
+PublicApiController --> FilaRelatorioService
+
+CronSchedulerService --> AnalyticsService
+FilaRelatorioService --> AnalyticsService
+FilaRelatorioService --> TarefaRelatorioRepository
+AnalyticsService --> AnalyticsRepository
+AnalyticsService --> EquipamentoService
+AuthService --> ApiKeyRepository
+@enduml

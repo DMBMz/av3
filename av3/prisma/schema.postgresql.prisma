@@ -1,0 +1,230 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Usuario {
+  id           String    @id @default(uuid())
+  usuario      String    @unique
+  hashSenha    String
+  salt         String
+  papel        String
+  ativo        Boolean   @default(true)
+  ultimoAcesso DateTime  @default(now())
+  criadoEm     DateTime  @default(now())
+
+  @@map("usuarios")
+}
+
+model Organizacao {
+  id                String           @id @default(uuid())
+  razaoSocial       String
+  cnpj              String           @unique
+  inscricaoEstadual String
+  enderecoCompleto  String
+  telefone          String
+  email             String
+  ativo             Boolean          @default(true)
+  versao            Int              @default(1)
+  dataCadastro      DateTime         @default(now())
+
+  contrato          Contrato?
+  lotes             Lote[]
+  apiKeys           ApiKeyParceiro[]
+
+  @@map("organizacoes")
+}
+
+model Contrato {
+  id                  String      @id @default(uuid())
+  organizacaoId       String      @unique
+  dataAssinatura      DateTime    @default(now())
+  dataVencimento      DateTime
+  clausulasJson       String      @default("[]")
+  valorMensal         Float
+  renovacaoAutomatica Boolean     @default(false)
+  versao              Int         @default(1)
+  criadoEm            DateTime    @default(now())
+
+  organizacao         Organizacao @relation(fields: [organizacaoId], references: [id], onDelete: Cascade)
+
+  @@map("contratos")
+}
+
+model Lote {
+  id                   String        @id @default(uuid())
+  dataEntrada          DateTime      @default(now())
+  dataConclusaoTriagem DateTime?
+  operadorTriagem      String?
+  organizacaoId        String
+  notaFiscal           String
+  transportadora       String
+  statusProcessamento  String        @default("RECEBIDO")
+  observacoes          String?
+  versao               Int           @default(1)
+  criadoEm             DateTime      @default(now())
+
+  organizacao          Organizacao   @relation(fields: [organizacaoId], references: [id])
+  equipamentos         Equipamento[]
+
+  @@map("lotes")
+}
+
+model Equipamento {
+  id                       String         @id @default(uuid())
+  codigoBarrasInterno      String         @unique
+  tipo                     String
+  marca                    String
+  modelo                   String
+  anoFabricacao            Int
+  estadoFisico             String
+  pesoQuilogramas          Float
+  valorEstimadoRecuperacao Float?
+  loteId                   String
+  posicaoNoLote            Int            @default(1)
+  statusRastreamento       String         @default("AGUARDANDO_TRIAGEM")
+  justificativaEstado      String?
+  versao                   Int            @default(1)
+  criadoEm                 DateTime       @default(now())
+
+  lote                     Lote           @relation(fields: [loteId], references: [id], onDelete: Cascade)
+  movimentacoes            Movimentacao[]
+
+  @@map("equipamentos")
+}
+
+model Movimentacao {
+  id            String      @id @default(uuid())
+  equipamentoId String
+  dataHora      DateTime    @default(now())
+  origem        String
+  destino       String
+  responsavel   String
+  observacao    String?
+
+  equipamento   Equipamento @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+
+  @@map("movimentacoes")
+}
+
+model JournalTransacao {
+  id                 String   @id @default(uuid())
+  timestamp          DateTime @default(now())
+  operacao           String
+  entidade           String
+  dadosAntes         String?
+  dadosDepois        String?
+  usuarioResponsavel String
+
+  @@map("journal_transacoes")
+}
+
+model ParametroGlobal {
+  id                          String @id @default("CONFIG_GLOBAL")
+  aliquotaImpostoPadrao       Float  @default(0.12)
+  coeficienteDepreciacaoAnual Float  @default(0.20)
+
+  @@map("parametros_globais")
+}
+
+model ApiKeyParceiro {
+  id                    String       @id @default(uuid())
+  nomeParceiro          String
+  organizacaoId         String?
+  prefixoChave          String
+  hashChave             String       @unique
+  permissoesJson        String       @default("[\"READ_RASTREABILIDADE\"]")
+  limiteRequisicoesMin  Int          @default(60)
+  planoAcesso           String       @default("STANDARD")
+  ativa                 Boolean      @default(true)
+  totalRequisicoes      Int          @default(0)
+  ultimoUsoEm           DateTime?
+  expiraEm              DateTime?
+  criadoEm              DateTime     @default(now())
+
+  organizacao           Organizacao? @relation(fields: [organizacaoId], references: [id], onDelete: SetNull)
+
+  @@map("api_keys_parceiros")
+}
+
+model RelatorioEficiencia {
+  id                        String   @id @default(uuid())
+  periodoReferencia         String
+  totalLotesAnalisados      Int
+  tempoMedioTriagemHoras    Float
+  tempoMedianoTriagemHoras  Float
+  desvioPadraoTriagemHoras  Float
+  operadorMaisEficiente     String?
+  gargaloIdentificado       String
+  metricasPorOperadorJson   String
+  metricasPorPeriodoJson    String
+  geradoPor                 String   @default("SISTEMA_ANALITICO")
+  criadoEm                  DateTime @default(now())
+
+  @@map("relatorios_eficiencia")
+}
+
+model RelatorioRentabilidade {
+  id                             String   @id @default(uuid())
+  tipoEquipamento                String
+  marcaAnalisada                 String   @default("TODAS")
+  totalUnidadesAmostra           Int
+  pesoMedioKg                    Float
+  valorMedioRecuperacaoBRL       Float
+  valorMedianoRecuperacaoBRL     Float
+  desvioPadraoRecuperacaoBRL     Float
+  valorTotalPotencialBRL         Float
+  indicePriorizacao              Float
+  detalhamentoPorEstadoMarcaJson String
+  geradoPor                      String   @default("SISTEMA_ANALITICO")
+  criadoEm                       DateTime @default(now())
+
+  @@map("relatorios_rentabilidade")
+}
+
+model RelatorioPreditivo {
+  id                            String   @id @default(uuid())
+  tipoEquipamento               String
+  modeloAnalisado               String   @default("OLS_E_SUAVIZACAO_EXPONENCIAL")
+  totalAmostrasHistoricas       Int
+  coeficienteAngularOLS         Float
+  interceptoOLS                 Float
+  coeficienteDeterminacaoR2     Float
+  idadeMediaAtualAnos           Float
+  vidaUtilTotalEstimadaAnos     Float
+  vidaUtilRemanescenteMediaAnos Float
+  anoProjetadoInservivel        Int
+  suavizacaoExponencialAlfa     Float    @default(0.35)
+  taxaFalhaSuavizada            Float
+  projecoesDetalhadasJson       String
+  geradoPor                     String   @default("SISTEMA_ANALITICO")
+  criadoEm                      DateTime @default(now())
+
+  @@map("relatorios_preditivos")
+}
+
+model TarefaRelatorio {
+  id                  String    @id @default(uuid())
+  tipoRelatorio       String
+  formatoSaida        String    @default("JSON")
+  status              String    @default("AGUARDANDO")
+  solicitante         String
+  organizacaoFiltroId String?
+  parametrosJson      String    @default("{}")
+  tentativas          Int       @default(0)
+  maxTentativas       Int       @default(3)
+  progressoPercentual Int       @default(0)
+  caminhoArquivo      String?
+  conteudoResultado   String?
+  erroMensagem        String?
+  webhookUrl          String?
+  iniciadoEm          DateTime?
+  concluidoEm         DateTime?
+  criadoEm            DateTime  @default(now())
+
+  @@map("tarefas_relatorios")
+}

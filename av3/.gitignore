@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+*.tmp*
+*.db
+*.db-journal
+dev.db*
+prisma/dev.db*
+exports/
+.env
+!.env.example
+.DS_Store
+Thumbs.db
